@@ -1,0 +1,11 @@
+{
+  "codeowners": ["@karatecarter"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/karatecarter/homeassistant-icamera/",
+  "domain": "icamera",
+  "iot_class": "local_push",
+  "name": "iCamera",
+  "requirements": [],
+  "version": "1.0.0"
+}
