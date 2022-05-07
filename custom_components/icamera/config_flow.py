@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_registry import (
 import voluptuous as vol
 
 from .const import DOMAIN
+
 #
 #
 
@@ -25,16 +26,19 @@ CONF_SCHEMA = vol.Schema(
         vol.Required("hostname", "Hostname/IP Address"): cv.string,
         vol.Required("http_port", "HTTP Port", 80): cv.positive_int,
         vol.Required("rtsp_port", "RTSP Port", 554): cv.positive_int,
-        vol.Required("username", "Camera Username (Case Sensitive)", "administrator"): cv.string,
+        vol.Required(
+            "username", "Camera Username (Case Sensitive)", "administrator"
+        ): cv.string,
         vol.Required("password", "Camera Password (Case Sensitive)"): cv.string,
         vol.Required("stream_type", "Type of video stream", "RTSP"): cv.string,
-        vol.Required("motion_timeout", "Motion Timeout", 5): cv.positive_int
+        vol.Required("motion_timeout", "Motion Timeout", 5): cv.positive_int,
     }
 )
 #
 
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class ICameraCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """iCamera Custom config flow."""
@@ -46,9 +50,20 @@ class ICameraCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
 
             try:
-                hostaddress = "http://" + user_input["hostname"] + ":" + str(user_input["http_port"]) + "/adm/log.cgi"
+                hostaddress = (
+                    "http://"
+                    + user_input["hostname"]
+                    + ":"
+                    + str(user_input["http_port"])
+                    + "/adm/log.cgi"
+                )
                 session = async_get_clientsession(self.hass)
-                response = await session.get(hostaddress, auth=aiohttp.BasicAuth(user_input["username"], user_input["password"]))
+                response = await session.get(
+                    hostaddress,
+                    auth=aiohttp.BasicAuth(
+                        user_input["username"], user_input["password"]
+                    ),
+                )
                 if response.status != 200:
                     errors["base"] = "auth"
 
@@ -62,6 +77,7 @@ class ICameraCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user", data_schema=CONF_SCHEMA, errors=errors
         )
+
 
 #     @staticmethod
 #     @callback

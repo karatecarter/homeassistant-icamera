@@ -115,6 +115,19 @@ class ICameraMotion(Camera):
         _LOGGER.debug("Sensor init - id=" + self._id)
 
     @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self.unique_id)
+            },
+            "name": "iCamera",
+            "manufacturer": "Dan",
+            #            "model": self.light.productname,
+            #            "sw_version": self.light.swversion,
+        }
+
+    @property
     def supported_features(self) -> int:
         return SUPPORT_STREAM
 
