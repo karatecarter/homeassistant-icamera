@@ -4,38 +4,19 @@
 #
 # from .const import DOMAIN
 #
-from homeassistant.helpers import entity_registry as er
-import threading
-import urllib.parse
-
-import aiohttp
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
-
-import asyncio
-from functools import partial
-
-import voluptuous as vol
 import logging
-from aiohttp import ClientError, hdrs
+from typing import Any
 
 # import pandas as pd
 from homeassistant import config_entries, core
-from datetime import datetime, date
-import sys
-from datetime import timedelta
-from typing import Any, Callable, Dict, Optional
 from homeassistant.components.switch import SwitchEntity
-import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.entity import Entity, EntityCategory
-from homeassistant.helpers.typing import (
-    ConfigType,
-    DiscoveryInfoType,
-    HomeAssistantType,
-    StateType,
-)
-from .const import DOMAIN
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.typing import HomeAssistantType
 
+from . import cameras
+from .const import DOMAIN
+from .icamera_api import ICameraApi, ICameraMotionWindow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,33 +28,34 @@ async def async_setup_entry(
 ):
     """Setup sensors from a config entry created in the integrations UI."""
     _LOGGER.debug("async_setup_entry")
-    config = hass.data[DOMAIN][config_entry.entry_id]
 
-    sensors = [ICameraEmailSwitch(hass, config_entry.entry_id, config)]
+    camera = cameras[config_entry.entry_id]
+    sensors = [
+        ICameraEmailSwitch(hass, config_entry.entry_id, camera),
+        ICameraMotionWindowSwitch(hass, config_entry.entry_id, 1, camera),
+        ICameraMotionWindowSwitch(hass, config_entry.entry_id, 2, camera),
+        ICameraMotionWindowSwitch(hass, config_entry.entry_id, 3, camera),
+        ICameraMotionWindowSwitch(hass, config_entry.entry_id, 4, camera),
+    ]
     async_add_entities(sensors, update_before_add=True)
 
 
 class ICameraEmailSwitch(SwitchEntity):
     """Representation of an iCamera email switch."""
 
-    def __init__(self, hass: HomeAssistantType, id: str, config: dict):
+    def __init__(
+        self, hass: HomeAssistantType, uniqueid: str, camera: ICameraApi
+    ) -> None:
         super().__init__()
-        self._auth = aiohttp.BasicAuth(config["username"], config["password"])
-        self._username = config["username"]
-        self._password = config["password"]
-        self._hostname = config["hostname"]
-        self._httpport = config["http_port"]
-        self._id = id
+        self._camera = camera
+        self._id = uniqueid
         self.hass = hass
-        self._name = "Send Email on Motion"
-        self._is_on = True
-        self._available = True
+        self._attr_name = "Send Email on Motion"
+        self._attr_available = False
+        self._camera.subscribe_to_updates(self._camera_updated)
 
-        self._last_update = 0
-
-        self._attrs: Dict[str, Any] = {}
-
-        _LOGGER.debug("Sensor init - id=" + self._id)
+        log_string = f"Sensor init - id={self._id}"
+        _LOGGER.debug(log_string)
 
     @property
     def device_info(self):
@@ -82,9 +64,9 @@ class ICameraEmailSwitch(SwitchEntity):
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self.unique_id)
             },
-            # "name": "iCamera",
-            # "manufacturer": "Dan",
-            #            "model": self.light.productname,
+            "configuration_url": self._camera.config_url,
+            "default_name": "iCamera",
+            "model": "iCamera",
             #            "sw_version": self.light.swversion,
         }
 
@@ -93,44 +75,21 @@ class ICameraEmailSwitch(SwitchEntity):
         return EntityCategory.CONFIG
 
     @property
-    def name(self) -> str:
-        """Return the name of the entity."""
-        return self._name
-
-    @property
     def unique_id(self) -> str:
         """Return the unique ID of the sensor."""
         return self._id
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._available
-
-    @property
     def is_on(self) -> bool:
-        return self._is_on
+        return self._camera.send_email_on_motion
 
     async def async_set_state(self, on: bool) -> None:
-        on_string = "0"
-        if on:
-            on_string = "1"
-
-        hostaddress = (
-            "http://"
-            + self._hostname
-            + ":"
-            + str(self._httpport)
-            + "/adm/set_group.cgi?group=EVENT&event_interval=0&event_mt=email:"
-            + on_string
+        response = await self._camera.async_set_email_on_motion(
+            async_get_clientsession(self.hass), on
         )
 
-        session = async_get_clientsession(self.hass)
-        response = await session.get(hostaddress, auth=self._auth)
-        if response.status != 200:
+        if not response:
             _LOGGER.warning("Set email switch failed")
-        else:
-            self._is_on = on
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         return await self.async_set_state(False)
@@ -139,7 +98,92 @@ class ICameraEmailSwitch(SwitchEntity):
         return await self.async_set_state(True)
 
     async def async_turn_toggle(self, **kwargs: Any) -> None:
-        return await self.async_set_state(not self._is_on)
+        return await self.async_set_state(not self._camera.send_email_on_motion)
 
     async def async_update(self):
-        self._available = True
+        session = async_get_clientsession(self.hass)
+        await self._camera.async_update_camera_parameters(session)
+
+        self._attr_available = True
+
+    def _camera_updated(self):
+        if self.entity_id != None:
+            self.schedule_update_ha_state()
+
+
+class ICameraMotionWindowSwitch(SwitchEntity):
+    def __init__(
+        self,
+        hass: HomeAssistantType,
+        uniqueid: str,
+        window_num: int,
+        camera: ICameraApi,
+    ) -> None:
+        super().__init__()
+        self._camera = camera
+        self._device_id = uniqueid
+        self._id = uniqueid + ".switch.motion" + str(window_num)
+        self.hass = hass
+        self._window_num = window_num
+        self._attr_name = "Motion Detection Window " + str(window_num)
+        self._attr_available = False
+        self._camera.subscribe_to_updates(self._camera_updated)
+
+    @property
+    def entity_category(self) -> EntityCategory:
+        return EntityCategory.CONFIG
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self._device_id)
+            }
+        }
+
+    @property
+    def unique_id(self) -> str:
+        return self._id
+
+    @property
+    def _window(self) -> ICameraMotionWindow:
+        return self._camera.get_motion_window(self._window_num)
+
+    @property
+    def is_on(self) -> bool:
+        return self._window.is_on
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "name": self._window.name,
+            "coordinates": self._window.coordinates,
+            "threshold": self._window.threshold,
+            "sensitivity": self._window.sensitivity,
+        }
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        return await self._camera.async_set_motion_window_active(
+            async_get_clientsession(self.hass), self._window_num, True
+        )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        return await self._camera.async_set_motion_window_active(
+            async_get_clientsession(self.hass), self._window_num, False
+        )
+
+    async def async_toggle(self, **kwargs: Any) -> None:
+        return await self._camera.async_set_motion_window_active(
+            async_get_clientsession(self.hass), self._window_num, not self.is_on
+        )
+
+    async def async_update(self) -> None:
+        await self._camera.async_update_camera_parameters(
+            async_get_clientsession(self.hass)
+        )
+        self._attr_available = True
+
+    def _camera_updated(self):
+        if self.entity_id != None:
+            self.schedule_update_ha_state()

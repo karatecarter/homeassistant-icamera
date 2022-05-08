@@ -1,19 +1,10 @@
-import base64
-import json
-from copy import deepcopy
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-import aiohttp
-from homeassistant import config_entries, core
-from homeassistant.const import CONF_ACCESS_TOKEN, CONF_NAME, CONF_PATH, CONF_URL
-from homeassistant.core import callback
+from . import create_camera_with_config
+from homeassistant import config_entries
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.entity_registry import (
-    async_entries_for_config_entry,
-    async_get_registry,
-)
 import voluptuous as vol
 
 from .const import DOMAIN
@@ -43,32 +34,22 @@ _LOGGER = logging.getLogger(__name__)
 class ICameraCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """iCamera Custom config flow."""
 
-    async def async_step_user(self, user_input: Optional[Dict[str, Any]] = None):
+    async def async_step_user(self, user_input: Optional[dict[str, Any]] = None):
         """Invoked when a user initiates a flow via the user interface."""
-        errors: Dict[str, str] = {}
+        errors: dict[str, str] = {}
 
         if user_input is not None:
 
             try:
-                hostaddress = (
-                    "http://"
-                    + user_input["hostname"]
-                    + ":"
-                    + str(user_input["http_port"])
-                    + "/adm/log.cgi"
-                )
-                session = async_get_clientsession(self.hass)
-                response = await session.get(
-                    hostaddress,
-                    auth=aiohttp.BasicAuth(
-                        user_input["username"], user_input["password"]
-                    ),
-                )
-                if response.status != 200:
+                camera = create_camera_with_config(user_input)
+                if not await camera.async_is_connection_valid(
+                    async_get_clientsession(self.hass)
+                ):
                     errors["base"] = "auth"
 
-            except Exception:
+            except Exception:  # pylint: disable=broad-except
                 errors["base"] = "auth"
+
             if not errors:
                 # Input is valid, set data.
                 # self.data = user_input

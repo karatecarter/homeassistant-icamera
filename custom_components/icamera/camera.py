@@ -4,36 +4,28 @@
 #
 # from .const import DOMAIN
 #
-from homeassistant.helpers import entity_registry as er
+from homeassistant.exceptions import Unauthorized
+from . import cameras
+from .icamera_api import ICameraApi
 import threading
-import urllib.parse
-
-import aiohttp
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 
 import asyncio
 from functools import partial
 
-import voluptuous as vol
 import logging
 from aiohttp import ClientError, hdrs
 
 # import pandas as pd
 from homeassistant import config_entries, core
-from datetime import datetime, date
-import sys
-from datetime import timedelta
-from typing import Any, Callable, Dict, Optional
-from homeassistant.components.camera import Camera, SUPPORT_STREAM
-import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.entity import Entity
-from homeassistant.helpers.typing import (
-    ConfigType,
-    DiscoveryInfoType,
-    HomeAssistantType,
-    StateType,
-)
+from datetime import datetime
+from typing import Any
+from homeassistant.components.camera import (  # pylint: disable=hass-deprecated-import
+    Camera,
+    SUPPORT_STREAM,
+)  # CameraEntityFeature not availabe in deployed HA server
+from homeassistant.helpers.typing import HomeAssistantType
 from .const import DOMAIN
 
 STATE_MOTION = "motion"
@@ -78,41 +70,61 @@ async def async_setup_entry(
     """Setup sensors from a config entry created in the integrations UI."""
     _LOGGER.debug("async_setup_entry")
     config = hass.data[DOMAIN][config_entry.entry_id]
+    camera = cameras[config_entry.entry_id]
 
-    sensors = [ICameraMotion(hass, config_entry.entry_id, config)]
+    sensors = [
+        ICameraMotion(
+            hass,
+            config_entry.entry_id,
+            camera,
+            config["motion_timeout"],
+        )
+    ]
     async_add_entities(sensors, update_before_add=True)
 
 
 class ICameraMotion(Camera):
     """Representation of a iCamera Motion sensor."""
 
-    def __init__(self, hass: HomeAssistantType, id: str, config: dict):
+    def __init__(
+        self,
+        hass: HomeAssistantType,
+        uniqueid: str,
+        camera: ICameraApi,
+        motion_timeout: int,
+    ) -> None:
         super().__init__()
-        self._auth = aiohttp.BasicAuth(config["username"], config["password"])
-        self._username = config["username"]
-        self._password = config["password"]
-        self._hostname = config["hostname"]
-        self._httpport = config["http_port"]
-        self._rtspport = config["rtsp_port"]
-        self._motion_timeout = config["motion_timeout"]
-        self._id = id
+        self._camera = camera
+        self._camera.set_unathorized_callback(self.unauthorized)
+        self._camera.subscribe_to_updates(self._camera_updated)
+        self._is_on = True
+        self._motion_timeout = motion_timeout
+        self._id = uniqueid
         self.hass = hass
         self._timer = None
-        self._name = "icamera_" + self._hostname
-        self._is_on = True
+        self._name = "icamera_" + self._camera._hostname
+        self._hostname = self._camera._hostname
         self._available = False
-        self._callback_url = ""
-        self._stream_type = config["stream_type"]
 
         self._last_update = 0
         self._last_image = None
         self._last_motion = 0
 
-        self._state = STATE_IDLE
+        self._attr_state = STATE_IDLE
 
-        self._attrs: Dict[str, Any] = {}
+        self._attrs: dict[str, Any] = {}
 
-        _LOGGER.debug("Sensor init - id=" + self._id)
+        log_string = f"Sensor init - id={self._id}"
+        _LOGGER.debug(log_string)
+
+    def unauthorized(self):
+        _LOGGER.warning(
+            "Camera responded with an 401 Unauthorized error. Check you Username and Password (BOTH are case sensitive)."
+        )
+
+    @property
+    def state(self) -> str:
+        return self._attr_state
 
     @property
     def device_info(self):
@@ -121,9 +133,9 @@ class ICameraMotion(Camera):
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self.unique_id)
             },
-            "name": "iCamera",
-            "manufacturer": "Dan",
-            #            "model": self.light.productname,
+            "configuration_url": self._camera.config_url,
+            "default_name": "iCamera",
+            "model": "iCamera",
             #            "sw_version": self.light.swversion,
         }
 
@@ -133,16 +145,9 @@ class ICameraMotion(Camera):
 
     async def stream_source(self) -> str:
         """Return the source of the stream."""
-        if self._stream_type == "RTSP":
-            return f"rtsp://{self._hostname}:{str(self._rtspport)}/img/media.sav"
-        else:
-            return (
-                "http://"
-                + self._hostname
-                + ":"
-                + str(self._httpport)
-                + "/img/video.mjpeg"
-            )
+        stream_source = await self._camera.stream_source()
+        _LOGGER.debug("Getting stream source URL")
+        return stream_source
 
     def camera_image(self, width=None, height=None):
         return asyncio.run_coroutine_threadsafe(
@@ -152,14 +157,9 @@ class ICameraMotion(Camera):
     @asyncio.coroutine
     async def async_camera_image(self, width=None, height=None) -> bytes:
         """Return bytes of camera image."""
-        hostaddress = f"http://{self._hostname}:{str(self._httpport)}/img/snapshot.cgi"
-
-        session = async_get_clientsession(self.hass)
-        response = await session.get(hostaddress, auth=self._auth)
-        if response.status != 200:
-            _LOGGER.warning("Get snapshot Failed")
-        else:
-            return await response.read()
+        return await self._camera.async_camera_image(
+            async_get_clientsession(self.hass), width, height
+        )
 
     @property
     def name(self) -> str:
@@ -182,7 +182,7 @@ class ICameraMotion(Camera):
 
     @property
     def motion_detection_enabled(self) -> bool:
-        return True
+        return self._camera.is_motion_detection_enabled
 
     @property
     def extra_state_attributes(self):
@@ -197,13 +197,9 @@ class ICameraMotion(Camera):
 
         return attrs
 
-    @property
-    def state(self) -> str:
-        return self._state
-
     async def motion_trigger(self):
         _LOGGER.debug("Motion triggered")
-        self._state = STATE_MOTION
+        self._attr_state = STATE_MOTION
         self._last_motion = datetime.now()
         if self._timer is not None:
             self._timer.cancel()
@@ -213,7 +209,7 @@ class ICameraMotion(Camera):
 
     def motion_end(self):
         _LOGGER.debug("Motion ended")
-        self._state = STATE_IDLE
+        self._attr_state = STATE_IDLE
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None
@@ -222,12 +218,10 @@ class ICameraMotion(Camera):
     async def async_update(self):
         try:
 
-            self._last_update = datetime.now()
-            callback_url = urllib.parse.quote(
-                "http://192.168.1.139:8123/api/webhook/" + self.unique_id,
-                safe="'",
-            )
-            if self._callback_url != callback_url:
+            callback_url = "http://192.168.1.139:8123/api/webhook/" + self.unique_id
+            session = async_get_clientsession(self.hass)
+
+            if self._camera.motion_callback_url != callback_url:
                 _LOGGER.debug("Setting callback URL")
 
                 try:
@@ -237,26 +231,33 @@ class ICameraMotion(Camera):
                         self.unique_id,
                         partial(_handle_webhook, self.motion_trigger),
                     )
-                except Exception:
+                except Exception:  # pylint: disable=broad-except
                     _LOGGER.debug("Webhook already set")
 
-                hostaddress = (
-                    "http://"
-                    + self._hostname
-                    + ":"
-                    + str(self._httpport)
-                    + "/adm/set_group.cgi?group=HTTP_NOTIFY&http_notify=1&http_url="
-                    + callback_url
+                response = await self._camera.async_set_motion_callback_url(
+                    session, callback_url
                 )
-
-                session = async_get_clientsession(self.hass)
-                response = await session.get(hostaddress, auth=self._auth)
-                if response.status != 200:
+                if not response:
                     _LOGGER.warning("Set Callback URL Failed")
-                else:
-                    self._callback_url = callback_url
+
+            await self._camera.async_update_camera_parameters(session)
+            self._last_update = datetime.now()
             self._available = True
 
-        except (ClientError, Exception):
+        except (ClientError, Exception):  # pylint: disable=broad-except
             self._available = False
-            _LOGGER.exception("Error.")
+            _LOGGER.exception("Error")
+
+    def _camera_updated(self):
+        if self.entity_id != None:
+            self.schedule_update_ha_state()
+
+    async def async_enable_motion_detection(self) -> None:
+        return await self._camera.async_set_motion_detection_active(
+            async_get_clientsession(self.hass), True
+        )
+
+    async def async_disable_motion_detection(self) -> None:
+        return await self._camera.async_set_motion_detection_active(
+            async_get_clientsession(self.hass), False
+        )
