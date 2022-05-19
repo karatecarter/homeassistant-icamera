@@ -58,6 +58,10 @@ class ICameraEmailSwitch(SwitchEntity):
         _LOGGER.debug(log_string)
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"last_update": self._camera.last_updated}
+
+    @property
     def device_info(self):
         return {
             "identifiers": {
@@ -102,12 +106,13 @@ class ICameraEmailSwitch(SwitchEntity):
 
     async def async_update(self):
         session = async_get_clientsession(self.hass)
-        await self._camera.async_update_camera_parameters(session)
-
-        self._attr_available = True
+        self.hass.async_create_task(
+            self._camera.async_update_camera_parameters(session)
+        )
 
     def _camera_updated(self):
         if self.entity_id != None:
+            self._attr_available = True
             self.schedule_update_ha_state()
 
 
@@ -161,6 +166,7 @@ class ICameraMotionWindowSwitch(SwitchEntity):
             "coordinates": self._window.coordinates,
             "threshold": self._window.threshold,
             "sensitivity": self._window.sensitivity,
+            "last_update": self._camera.last_updated,
         }
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -179,11 +185,12 @@ class ICameraMotionWindowSwitch(SwitchEntity):
         )
 
     async def async_update(self) -> None:
-        await self._camera.async_update_camera_parameters(
-            async_get_clientsession(self.hass)
+        session = async_get_clientsession(self.hass)
+        self.hass.async_create_task(
+            self._camera.async_update_camera_parameters(session)
         )
-        self._attr_available = True
 
     def _camera_updated(self):
         if self.entity_id != None:
+            self._attr_available = True
             self.schedule_update_ha_state()

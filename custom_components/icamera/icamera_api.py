@@ -1,3 +1,5 @@
+import asyncio
+from datetime import datetime, timedelta
 from aiohttp import ClientResponse, ClientSession
 import aiohttp
 
@@ -105,6 +107,14 @@ class ICameraApi:
         self._is_motion_detection_enabled = False
         self._unauthorized_callback = None
         self._update_callbacks: list = []
+        self._last_update_request = datetime.min
+        self._last_updated = datetime.min
+        self._updating = False
+        self._error_callbacks: list = []
+
+    @property
+    def last_updated(self) -> datetime:
+        return self._last_updated
 
     @property
     def is_motion_detection_enabled(self) -> bool:
@@ -124,6 +134,9 @@ class ICameraApi:
 
     def subscribe_to_updates(self, callback):
         self._update_callbacks.append(callback)
+
+    def subscribe_to_errors(self, callback):
+        self._error_callbacks.append(callback)
 
     def set_unathorized_callback(self, callback):
         """Define function to be called whenever camera returns a 401 unauthorized response"""
@@ -285,29 +298,49 @@ class ICameraApi:
     async def async_update_camera_parameters(self, session: ClientSession):
         """Query camera for parameter values"""
 
-        # TODO: limit requests to 1 per 3 seconds
+        now = datetime.now()
+        if self._updating or self._last_update_request > now - timedelta(minutes=1):
+            return
 
-        event_response = self.async_get_camera_response(
-            session, "/adm/get_group.cgi?group=EVENT"
-        )  # for alarm (event_trigger & event_mt)
-        motion_response = self.async_get_camera_response(
-            session, "/adm/get_group.cgi?group=MOTION"
-        )  # for alarm (event_trigger & event_mt)
-        notify_response = self.async_get_camera_response(
-            session, "/adm/get_group.cgi?group=HTTP_NOTIFY"
-        )  # for alarm (event_trigger & event_mt)
+        self._last_update_request = now
+        self._updating = True
 
-        response = await event_response
-        if response.status == 200:
-            self.__process_response_text(await response.text())
+        try:
+            event_response = await self.async_get_camera_response(
+                session, "/adm/get_group.cgi?group=EVENT"
+            )  # for alarm (event_trigger & event_mt)
+            motion_response = await self.async_get_camera_response(
+                session, "/adm/get_group.cgi?group=MOTION"
+            )  # for alarm (event_trigger & event_mt)
+            notify_response = await self.async_get_camera_response(
+                session, "/adm/get_group.cgi?group=HTTP_NOTIFY"
+            )  # for alarm (event_trigger & event_mt)
 
-        response = await motion_response
-        if response.status == 200:
-            self.__process_response_text(await response.text())
+            response = event_response
+            if response.status == 200:
+                self.__process_response_text(await response.text())
 
-        response = await notify_response
-        if response.status == 200:
-            self.__process_response_text(await response.text())
+            response = motion_response
+            if response.status == 200:
+                self.__process_response_text(await response.text())
+
+            response = notify_response
+            if response.status == 200:
+                self.__process_response_text(await response.text())
+
+            for callback in self._update_callbacks:
+                callback()
+
+            self._updating = False
+            self._last_updated = datetime.now()
+
+            err = None
+
+        except asyncio.TimeoutError:
+            self._updating = False
+            err = "Timeout while getting camera parameters"
+            for callback in self._error_callbacks:
+                callback(err)
 
     async def async_check_log_for_motion_event(self, session: ClientSession) -> bool:
         """Returns true if the most recent log entry in the camera indicates motion (use this for confirming motion events fired by async_set_motion_callback_url"""
@@ -403,8 +436,5 @@ class ICameraApi:
                 self._motion_windows[i - 1].set_threshold(
                     self.__get_line(body, pos + 14)
                 )
-
-        for callback in self._update_callbacks:
-            callback()
 
         return ""

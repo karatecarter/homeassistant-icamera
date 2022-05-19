@@ -4,7 +4,6 @@
 #
 # from .const import DOMAIN
 #
-from homeassistant.exceptions import Unauthorized
 from . import cameras
 from .icamera_api import ICameraApi
 import threading
@@ -21,10 +20,7 @@ from aiohttp import ClientError, hdrs
 from homeassistant import config_entries, core
 from datetime import datetime
 from typing import Any
-from homeassistant.components.camera import (  # pylint: disable=hass-deprecated-import
-    Camera,
-    SUPPORT_STREAM,
-)  # CameraEntityFeature not availabe in deployed HA server
+from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.helpers.typing import HomeAssistantType
 from .const import DOMAIN
 
@@ -106,9 +102,8 @@ class ICameraMotion(Camera):
         self._hostname = self._camera._hostname
         self._available = False
 
-        self._last_update = 0
-        self._last_image = None
         self._last_motion = 0
+        self._last_image = 0
 
         self._attr_state = STATE_IDLE
 
@@ -119,8 +114,11 @@ class ICameraMotion(Camera):
 
     def unauthorized(self):
         _LOGGER.warning(
-            "Camera responded with an 401 Unauthorized error. Check you Username and Password (BOTH are case sensitive)."
+            "Camera responded with an 401 Unauthorized error. Check you Username and Password (BOTH are case sensitive)"
         )
+
+    def error(self, error_message: str):
+        _LOGGER.warning(error_message)
 
     @property
     def state(self) -> str:
@@ -141,7 +139,7 @@ class ICameraMotion(Camera):
 
     @property
     def supported_features(self) -> int:
-        return SUPPORT_STREAM
+        return CameraEntityFeature.STREAM
 
     async def stream_source(self) -> str:
         """Return the source of the stream."""
@@ -149,17 +147,19 @@ class ICameraMotion(Camera):
         _LOGGER.debug("Getting stream source URL")
         return stream_source
 
-    def camera_image(self, width=None, height=None):
-        return asyncio.run_coroutine_threadsafe(
-            self.async_camera_image(), self.hass.loop
-        ).result()
+    # def camera_image(self, width=None, height=None):
+    #     return asyncio.run_coroutine_threadsafe(
+    #         self.async_camera_image(), self.hass.loop
+    #     ).result()
 
     @asyncio.coroutine
     async def async_camera_image(self, width=None, height=None) -> bytes:
         """Return bytes of camera image."""
-        return await self._camera.async_camera_image(
+        image = await self._camera.async_camera_image(
             async_get_clientsession(self.hass), width, height
         )
+        self._last_image = datetime.now()
+        return image
 
     @property
     def name(self) -> str:
@@ -191,9 +191,10 @@ class ICameraMotion(Camera):
 
         if self._last_motion:
             attrs["last_motion"] = self._last_motion
+        if self._last_image:
+            attrs["last_image"] = self._last_image
 
-        if self._last_update:
-            attrs["last_update"] = self._last_update
+        attrs["last_update"] = self._camera.last_updated
 
         return attrs
 
@@ -216,6 +217,7 @@ class ICameraMotion(Camera):
         self.schedule_update_ha_state()
 
     async def async_update(self):
+        _LOGGER.debug("async_update")
         try:
 
             callback_url = "http://192.168.1.139:8123/api/webhook/" + self.unique_id
@@ -240,9 +242,9 @@ class ICameraMotion(Camera):
                 if not response:
                     _LOGGER.warning("Set Callback URL Failed")
 
-            await self._camera.async_update_camera_parameters(session)
-            self._last_update = datetime.now()
-            self._available = True
+            self.hass.async_create_task(
+                self._camera.async_update_camera_parameters(session)
+            )
 
         except (ClientError, Exception):  # pylint: disable=broad-except
             self._available = False
@@ -250,7 +252,9 @@ class ICameraMotion(Camera):
 
     def _camera_updated(self):
         if self.entity_id != None:
+            _LOGGER.debug("Camera updated")
             self.schedule_update_ha_state()
+            self._available = True
 
     async def async_enable_motion_detection(self) -> None:
         return await self._camera.async_set_motion_detection_active(
