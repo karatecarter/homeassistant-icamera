@@ -4,6 +4,7 @@
 #
 # from .const import DOMAIN
 #
+from homeassistant.components import webhook
 from . import cameras
 from .icamera_api import ICameraApi
 import threading
@@ -220,11 +221,11 @@ class ICameraMotion(Camera):
         _LOGGER.debug("async_update")
         try:
 
-            callback_url = "http://192.168.1.139:8123/api/webhook/" + self.unique_id
+            callback_url = webhook.get_url(self.hass) + "/api/webhook/" + self.unique_id
             session = async_get_clientsession(self.hass)
 
             if self._camera.motion_callback_url != callback_url:
-                _LOGGER.debug("Setting callback URL")
+                _LOGGER.debug("Setting callback URL - " + callback_url)
 
                 try:
                     self.hass.components.webhook.async_register(
