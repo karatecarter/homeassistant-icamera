@@ -227,15 +227,16 @@ class ICameraMotion(Camera):
             if self._camera.motion_callback_url != callback_url:
                 _LOGGER.debug("Setting callback URL - " + callback_url)
 
-                try:
-                    self.hass.components.webhook.async_register(
-                        DOMAIN,
-                        "iCamera_motion",
-                        self.unique_id,
-                        partial(_handle_webhook, self.motion_trigger),
-                    )
-                except Exception:  # pylint: disable=broad-except
-                    _LOGGER.debug("Webhook already set")
+                if not __debug__:
+                    try:
+                        self.hass.components.webhook.async_register(
+                            DOMAIN,
+                            "iCamera_motion",
+                            self.unique_id,
+                            partial(_handle_webhook, self.motion_trigger),
+                        )
+                    except Exception:  # pylint: disable=broad-except
+                        _LOGGER.debug("Webhook already set")
 
                 response = await self._camera.async_set_motion_callback_url(
                     session, callback_url
