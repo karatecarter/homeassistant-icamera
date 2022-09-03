@@ -225,25 +225,31 @@ class ICameraMotion(Camera):
             session = async_get_clientsession(self.hass)
 
             if self._camera.motion_callback_url != callback_url:
-                _LOGGER.debug("Setting callback URL - " + callback_url)
+                _LOGGER.debug("Registering webhook - " + callback_url)
+                try:
+                    self.hass.components.webhook.async_register(
+                        DOMAIN,
+                        "iCamera_motion",
+                        self.unique_id,
+                        partial(_handle_webhook, self.motion_trigger),
+                    )
+                except Exception:  # pylint: disable=broad-except
+                    _LOGGER.debug("Webhook already set")
 
                 if not __debug__:
-                    try:
-                        self.hass.components.webhook.async_register(
-                            DOMAIN,
-                            "iCamera_motion",
-                            self.unique_id,
-                            partial(_handle_webhook, self.motion_trigger),
-                        )
-                    except Exception:  # pylint: disable=broad-except
-                        _LOGGER.debug("Webhook already set")
+                    _LOGGER.debug("Setting camera callback URL - " + callback_url)
 
-                response = await self._camera.async_set_motion_callback_url(
-                    session, callback_url
-                )
-                if not response:
-                    _LOGGER.warning("Set Callback URL Failed")
-
+                    response = await self._camera.async_set_motion_callback_url(
+                        session, callback_url
+                    )
+                    if not response:
+                        _LOGGER.warning("Set Callback URL Failed")
+                else:
+                    _LOGGER.info(
+                        "Debug mode - camera callback URL not updated (webhook URL = "
+                        + callback_url
+                        + ")"
+                    )
             self.hass.async_create_task(
                 self._camera.async_update_camera_parameters(session)
             )
