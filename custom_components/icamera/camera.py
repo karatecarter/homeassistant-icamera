@@ -114,15 +114,20 @@ class ICameraMotion(Camera):
         _LOGGER.debug(log_string)
 
     def unauthorized(self):
+        """Log camera unauthorized warning (callback function called from icamera-api)"""
         _LOGGER.warning(
             "Camera responded with an 401 Unauthorized error. Check you Username and Password (BOTH are case sensitive)"
         )
 
     def error(self, error_message: str):
+        """LOG a warning message (callback function called from icamera-api)"""
         _LOGGER.warning(error_message)
 
     @property
-    def state(self) -> str:
+    def state(self) -> str:  # pylint: disable=overridden-final-method
+        """Returns motion state of camera"""
+        # base object defines this property as "final", but camera motion state will not update without this
+        # since base object defines state using "is_recording" and "is_streaming"
         return self._attr_state
 
     @property
@@ -225,7 +230,7 @@ class ICameraMotion(Camera):
             session = async_get_clientsession(self.hass)
 
             if self._camera.motion_callback_url != callback_url:
-                _LOGGER.debug("Registering webhook - " + callback_url)
+                _LOGGER.debug("Registering webhook - %s", callback_url)
                 try:
                     self.hass.components.webhook.async_register(
                         DOMAIN,
@@ -237,7 +242,7 @@ class ICameraMotion(Camera):
                     _LOGGER.debug("Webhook already set")
 
                 if not __debug__:
-                    _LOGGER.debug("Setting camera callback URL - " + callback_url)
+                    _LOGGER.debug("Setting camera callback URL - %s", callback_url)
 
                     response = await self._camera.async_set_motion_callback_url(
                         session, callback_url
@@ -246,9 +251,8 @@ class ICameraMotion(Camera):
                         _LOGGER.warning("Set Callback URL Failed")
                 else:
                     _LOGGER.info(
-                        "Debug mode - camera callback URL not updated (webhook URL = "
-                        + callback_url
-                        + ")"
+                        "Debug mode - camera callback URL not updated (webhook URL = %s)",
+                        callback_url,
                     )
             self.hass.async_create_task(
                 self._camera.async_update_camera_parameters(session)
