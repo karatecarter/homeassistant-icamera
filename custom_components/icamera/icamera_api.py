@@ -182,7 +182,7 @@ class ICameraApi:
         callback_url = urllib.parse.quote(url, safe="'")
         response = await self.async_send_camera_command(
             session,
-            f"/adm/set_group.cgi?group=HTTP_NOTIFY&http_notify=1&http_url={callback_url}",
+            f"/adm/set_group.cgi?group=HTTP_NOTIFY&http_notify=1&http_method=0&http_url={callback_url}",
         )
         if response:
             self._motion_callback_url = url
