@@ -225,35 +225,9 @@ class ICameraMotion(Camera):
     async def async_update(self):
         _LOGGER.debug("async_update")
         try:
-
-            callback_url = webhook.get_url(self.hass) + "/api/webhook/" + self.unique_id
             session = async_get_clientsession(self.hass)
+            await self.async_setup_webhook()
 
-            if self._camera.motion_callback_url != callback_url:
-                _LOGGER.debug("Registering webhook - %s", callback_url)
-                try:
-                    self.hass.components.webhook.async_register(
-                        DOMAIN,
-                        "iCamera_motion",
-                        self.unique_id,
-                        partial(_handle_webhook, self.motion_trigger),
-                    )
-                except Exception:  # pylint: disable=broad-except
-                    _LOGGER.debug("Webhook already set")
-
-                if not __debug__:
-                    _LOGGER.debug("Setting camera callback URL - %s", callback_url)
-
-                    response = await self._camera.async_set_motion_callback_url(
-                        session, callback_url
-                    )
-                    if not response:
-                        _LOGGER.warning("Set Callback URL Failed")
-                else:
-                    _LOGGER.info(
-                        "Debug mode - camera callback URL not updated (webhook URL = %s)",
-                        callback_url,
-                    )
             self.hass.async_create_task(
                 self._camera.async_update_camera_parameters(session)
             )
@@ -265,8 +239,39 @@ class ICameraMotion(Camera):
     def _camera_updated(self):
         if self.entity_id != None:
             _LOGGER.debug("Camera updated")
+            asyncio.run_coroutine_threadsafe(self.async_setup_webhook(), self.hass.loop)
             self.schedule_update_ha_state()
             self._available = True
+
+    async def async_setup_webhook(self):
+        callback_url = webhook.get_url(self.hass) + "/api/webhook/" + self.unique_id
+        session = async_get_clientsession(self.hass)
+
+        if self._camera.motion_callback_url != callback_url:
+            _LOGGER.debug("Registering webhook - %s", callback_url)
+            try:
+                self.hass.components.webhook.async_register(
+                    DOMAIN,
+                    "iCamera_motion",
+                    self.unique_id,
+                    partial(_handle_webhook, self.motion_trigger),
+                )
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.debug("Webhook already set")
+
+            if self.motion_detection_enabled:
+                _LOGGER.debug("Setting camera callback URL - %s", callback_url)
+
+                response = await self._camera.async_set_motion_callback_url(
+                    session, callback_url
+                )
+                if not response:
+                    _LOGGER.warning("Set Callback URL Failed")
+            else:
+                _LOGGER.info(
+                    "Motion detection not enabled - camera callback URL not updated (webhook URL = %s)",
+                    callback_url,
+                )
 
     async def async_enable_motion_detection(self) -> None:
         return await self._camera.async_set_motion_detection_active(

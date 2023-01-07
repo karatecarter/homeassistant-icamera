@@ -242,10 +242,11 @@ class ICameraApi:
             on_string = "1"
         response = await self.async_send_camera_command(
             session,
-            f"/adm/set_group.cgi?group=EVENT&event_trigger={on_string}",
+            f"/adm/set_group.cgi?group=EVENT&event_trigger={on_string}&event_mt=httpn:{on_string}",
         )
         if response:
             self._is_motion_detection_enabled = flag
+        return response
 
     async def async_set_motion_window_coordinates(
         self,
@@ -379,15 +380,26 @@ class ICameraApi:
                 return ""
 
         pos = body.find("event_mt=")
-        eventMTLine = ""
+        event_mt_line = ""
+        event_http = False
         if pos >= 0:
-            eventMTLine = self.__get_line(body, pos)
+            event_mt_line: str = self.__get_line(body, pos + 9)
+            if event_mt_line.find("httpn:0") > 0:
+                event_http = False
+            elif event_mt_line.find("httpn:1") > 0:
+                event_http = True
+            else:
+                event_mt_array = event_mt_line.split(",")
+                if event_mt_array[4] == "1":
+                    event_http = True
+                else:
+                    event_http = False
 
-        if body.find("event_trigger=0") >= 0 or eventMTLine.find("httpn:0") >= 0:
+        if body.find("event_trigger=0") >= 0 or (
+            event_mt_line != "" and not event_http
+        ):
             self._is_motion_detection_enabled = False
-        elif (
-            body.find("event_trigger=1") >= 0 and body.find("httpn:1") >= 0
-        ):  # is this right?  Copied from ST device handler
+        elif body.find("event_trigger=1") >= 0 and event_http:
             self._is_motion_detection_enabled = True
 
         if body.find("http_notify=0") >= 0:
@@ -397,9 +409,9 @@ class ICameraApi:
             if pos >= 0:
                 self._motion_callback_url = self.__get_line(body, pos + 9)
 
-        pos = eventMTLine.find("email:")
+        pos = event_mt_line.find("email:")
         if pos >= 0:
-            send_email_on_motion = eventMTLine[pos + 6 : pos + 7]
+            send_email_on_motion = event_mt_line[pos + 6 : pos + 7]
             if send_email_on_motion == "1":
                 self._send_email_on_motion = True
             else:

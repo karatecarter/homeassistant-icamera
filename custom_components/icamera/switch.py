@@ -31,6 +31,7 @@ async def async_setup_entry(
 
     camera = cameras[config_entry.entry_id]
     sensors = [
+        ICameraMotionDetectionSwitch(hass, config_entry.entry_id, camera),
         ICameraEmailSwitch(hass, config_entry.entry_id, camera),
         ICameraMotionWindowSwitch(hass, config_entry.entry_id, 1, camera),
         ICameraMotionWindowSwitch(hass, config_entry.entry_id, 2, camera),
@@ -91,7 +92,6 @@ class ICameraEmailSwitch(SwitchEntity):
         response = await self._camera.async_set_email_on_motion(
             async_get_clientsession(self.hass), on
         )
-
         if not response:
             _LOGGER.warning("Set email switch failed")
 
@@ -103,6 +103,82 @@ class ICameraEmailSwitch(SwitchEntity):
 
     async def async_turn_toggle(self, **kwargs: Any) -> None:
         return await self.async_set_state(not self._camera.send_email_on_motion)
+
+    async def async_update(self):
+        session = async_get_clientsession(self.hass)
+        self.hass.async_create_task(
+            self._camera.async_update_camera_parameters(session)
+        )
+
+    def _camera_updated(self):
+        if self.entity_id != None:
+            self._attr_available = True
+            self.schedule_update_ha_state()
+
+
+class ICameraMotionDetectionSwitch(SwitchEntity):
+    """Representation of an iCamera motion detection switch."""
+
+    def __init__(
+        self, hass: HomeAssistantType, uniqueid: str, camera: ICameraApi
+    ) -> None:
+        super().__init__()
+        self._camera = camera
+        self._id = uniqueid + "_motion_detect"
+        self._device_id = uniqueid
+        self.hass = hass
+        self._attr_name = "Motion Detection"
+        self._attr_available = False
+        self._camera.subscribe_to_updates(self._camera_updated)
+
+        log_string = f"Sensor init - id={self._id}"
+        _LOGGER.debug(log_string)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"last_update": self._camera.last_updated}
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self._device_id)
+            },
+            "configuration_url": self._camera.config_url,
+            "default_name": "iCamera",
+            "model": "iCamera",
+            #            "sw_version": self.light.swversion,
+        }
+
+    @property
+    def entity_category(self) -> EntityCategory:
+        return EntityCategory.CONFIG
+
+    @property
+    def unique_id(self) -> str:
+        """Return the unique ID of the sensor."""
+        return self._id
+
+    @property
+    def is_on(self) -> bool:
+        return self._camera.is_motion_detection_enabled
+
+    async def async_set_state(self, on: bool) -> None:
+        response = await self._camera.async_set_motion_detection_active(
+            async_get_clientsession(self.hass), on
+        )
+        if not response:
+            _LOGGER.warning("Set motion detection failed")
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        return await self.async_set_state(False)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        return await self.async_set_state(True)
+
+    async def async_turn_toggle(self, **kwargs: Any) -> None:
+        return await self.async_set_state(not self._camera.is_motion_detection_enabled)
 
     async def async_update(self):
         session = async_get_clientsession(self.hass)
