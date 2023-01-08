@@ -9,6 +9,9 @@ from . import cameras
 from .icamera_api import ICameraApi
 import threading
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.entity_platform import current_platform
+import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
 
 
 import asyncio
@@ -78,6 +81,19 @@ async def async_setup_entry(
         )
     ]
     async_add_entities(sensors, update_before_add=True)
+
+    platform = current_platform.get()
+    platform.async_register_entity_service(
+        "set_window_coordinates",
+        {
+            vol.Required("window_num"): cv.positive_int,
+            vol.Required("x"): cv.positive_int,
+            vol.Required("y"): cv.positive_int,
+            vol.Required("x2"): cv.positive_int,
+            vol.Required("y2"): cv.positive_int,
+        },
+        "async_set_motion_window_coordinates",
+    )
 
 
 class ICameraMotion(Camera):
@@ -281,4 +297,16 @@ class ICameraMotion(Camera):
     async def async_disable_motion_detection(self) -> None:
         return await self._camera.async_set_motion_detection_active(
             async_get_clientsession(self.hass), False
+        )
+
+    async def async_set_motion_window_coordinates(
+        self,
+        window_num: int,
+        x: int,
+        y: int,
+        x2: int,
+        y2: int,
+    ):
+        return await self._camera.async_set_motion_window_coordinates(
+            async_get_clientsession(self.hass), window_num, x, y, x2, y2
         )

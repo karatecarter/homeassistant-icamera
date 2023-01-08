@@ -264,6 +264,8 @@ class ICameraApi:
         if response:
             self._motion_windows[window_num - 1].set_coordinates(x, y, x2, y2)
 
+        return response
+
     async def async_set_motion_window_name(
         self, session: ClientSession, window_num: int, name: str
     ):

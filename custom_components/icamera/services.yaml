@@ -1,0 +1,54 @@
+
+set_window_coordinates:
+    name: Set Motion Window Coordinates
+    description: Set Motion Window Coordinates
+    target:
+      entity:
+        integration: icamera
+        domain: camera
+    fields:
+       window_num:
+          name: window_num
+          description: Window Number (1-4)
+          required: true
+          example: 1
+          selector:
+            number:
+               min: 1
+               max: 4
+       x:
+          name: x
+          description: Top Left X coordinate
+          required: true
+          example: 0
+          selector:
+            number:
+               min: 0
+               max: 639
+       y:
+          name: y
+          description: Top Left Y coordinate
+          required: true
+          example: 0
+          selector:
+            number:
+               min: 0
+               max: 479
+       x2:
+          name: x2
+          description: Bottom Right X coordinate
+          required: true
+          example: 0
+          selector:
+            number:
+               min: 0
+               max: 639
+       y2:
+          name: y2
+          description: Bottom Right Y coordinate
+          required: true
+          example: 0
+          selector:
+            number:
+               min: 0
+               max: 479
