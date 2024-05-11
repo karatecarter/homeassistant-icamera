@@ -68,11 +68,7 @@ class ICameraEmailSwitch(SwitchEntity):
             "identifiers": {
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self.unique_id)
-            },
-            "configuration_url": self._camera.config_url,
-            "default_name": "iCamera",
-            "model": "iCamera",
-            #            "sw_version": self.light.swversion,
+            }
         }
 
     @property
@@ -144,11 +140,7 @@ class ICameraMotionDetectionSwitch(SwitchEntity):
             "identifiers": {
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self._device_id)
-            },
-            "configuration_url": self._camera.config_url,
-            "default_name": "iCamera",
-            "model": "iCamera",
-            #            "sw_version": self.light.swversion,
+            }
         }
 
     @property

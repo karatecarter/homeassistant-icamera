@@ -12,7 +12,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import current_platform
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-
+from homeassistant.components.webhook import async_register
 
 import asyncio
 from functools import partial
@@ -154,8 +154,8 @@ class ICameraMotion(Camera):
                 (DOMAIN, self.unique_id)
             },
             "configuration_url": self._camera.config_url,
-            "default_name": "iCamera",
-            "model": "iCamera",
+            "name": "iCamera",
+            "model": "iCamera"
             #            "sw_version": self.light.swversion,
         }
 
@@ -174,7 +174,7 @@ class ICameraMotion(Camera):
     #         self.async_camera_image(), self.hass.loop
     #     ).result()
 
-    @asyncio.coroutine
+ #   @asyncio.coroutine
     async def async_camera_image(self, width=None, height=None) -> bytes:
         """Return bytes of camera image."""
         image = await self._camera.async_camera_image(
@@ -242,7 +242,7 @@ class ICameraMotion(Camera):
         _LOGGER.debug("async_update")
         try:
             session = async_get_clientsession(self.hass)
-            await self.async_setup_webhook()
+            await self.async_setup_webhook() # this will register the webhook with Home Assistant, it will be called again from _camera_updated to set the camera's webhook url if necessary
 
             self.hass.async_create_task(
                 self._camera.async_update_camera_parameters(session)
@@ -266,11 +266,12 @@ class ICameraMotion(Camera):
         if self._camera.motion_callback_url != callback_url:
             _LOGGER.debug("Registering webhook - %s", callback_url)
             try:
-                self.hass.components.webhook.async_register(
+                async_register(
+                    self.hass,
                     DOMAIN,
                     "iCamera_motion",
                     self.unique_id,
-                    partial(_handle_webhook, self.motion_trigger),
+                    partial(_handle_webhook, self.motion_trigger)
                 )
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.debug("Webhook already set")

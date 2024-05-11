@@ -219,7 +219,7 @@ class ICameraApi:
         return response
 
     async def async_is_connection_valid(self, session: ClientSession):
-        return self.async_send_camera_command(session, "/adm/log.cgi")
+        return await self.async_send_camera_command(session, "/adm/log.cgi")
 
     async def async_set_motion_window_active(
         self, session: ClientSession, window_num: int, flag: bool
