@@ -18,7 +18,7 @@ CONF_SCHEMA = vol.Schema(
         vol.Required("http_port", "HTTP Port", 80): cv.positive_int,
         vol.Required("rtsp_port", "RTSP Port", 554): cv.positive_int,
         vol.Required(
-            "username", "Camera Username (Case Sensitive)", "administrator"
+            "username", "Camera Username (Case Sensitive)", "admin"
         ): cv.string,
         vol.Required("password", "Camera Password (Case Sensitive)"): cv.string,
         vol.Required("stream_type", "Type of video stream", "RTSP"): cv.string,
@@ -39,7 +39,6 @@ class ICameraCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-
             try:
                 camera = create_camera_with_config(user_input)
                 if not await camera.async_is_connection_valid(

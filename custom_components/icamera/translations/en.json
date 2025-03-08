@@ -1,0 +1,15 @@
+{
+    "entity": {
+        "select": {
+            "h264_resolution": {
+                "name": "H264 Resolution"
+            },
+            "mpeg4_resolution": {
+                "name": "MPEG4 Resolution"
+            },
+            "jpeg_resolution": {
+                "name": "JPEG Resolution"
+            }
+        }
+    }
+}

@@ -97,7 +97,7 @@ async def async_setup_entry(
 
 
 class ICameraMotion(Camera):
-    """Representation of a iCamera Motion sensor."""
+    """Representation of a iCamera camera entity with motion detection."""
 
     def __init__(
         self,
@@ -160,7 +160,7 @@ class ICameraMotion(Camera):
     async def stream_source(self) -> str:
         """Return the source of the stream."""
         stream_source = await self._camera.stream_source()
-        _LOGGER.debug("Getting stream source URL")
+        _LOGGER.debug("Getting stream source URL: %s", stream_source)
         return stream_source
 
     # def camera_image(self, width=None, height=None):
@@ -211,6 +211,13 @@ class ICameraMotion(Camera):
             attrs["last_image"] = self._last_image
 
         attrs["last_update"] = self._camera.last_updated
+
+        attrs["stream_type1"] = self._camera._stream_type1
+        attrs["stream_type2"] = self._camera._stream_type2
+        attrs["stream_type3"] = self._camera._stream_type3
+        attrs["h264_resolution"] = self._camera._h264_resolution
+        attrs["mpeg4_resolution"] = self._camera._mpeg4_resolution
+        attrs["jpeg_resolution"] = self._camera._jpeg_resolution
 
         # Add window coordinates to attributes
         for window_num, coords in self._window_coordinates.items():

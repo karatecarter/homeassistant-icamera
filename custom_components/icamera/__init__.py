@@ -27,6 +27,9 @@ async def async_setup_entry(
     hass.async_create_task(
         hass.config_entries.async_forward_entry_setup(entry, "switch")
     )
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setup(entry, "select")
+    )
     return True
 
 

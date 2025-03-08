@@ -111,6 +111,12 @@ class ICameraApi:
         self._last_updated = datetime.min
         self._updating = False
         self._error_callbacks: list = []
+        self._stream_type1 = ""
+        self._stream_type2 = ""
+        self._stream_type3 = ""
+        self._h264_resolution = ""
+        self._mpeg4_resolution = ""
+        self._jpeg_resolution = ""
 
     @property
     def last_updated(self) -> datetime:
@@ -266,6 +272,22 @@ class ICameraApi:
 
         return response
 
+    async def async_set_stream_resolution(
+        self, session: ClientSession, stream_type: str, resolution: str
+    ):
+        response = await self.async_send_camera_command(
+            session,
+            f"/adm/set_group.cgi?group={stream_type}&resolution={resolution}&resolution2={resolution}&resolution3={resolution}",
+        )
+        if response:
+            if stream_type == "H264":
+                self._h264_resolution = self.__resolution_value_to_string(resolution)
+            elif stream_type == "MPEG4":
+                self._mpeg4_resolution = self.__resolution_value_to_string(resolution)
+            elif stream_type == "JPEG":
+                self._jpeg_resolution = self.__resolution_value_to_string(resolution)
+        return response
+
     async def async_set_motion_window_name(
         self, session: ClientSession, window_num: int, name: str
     ):
@@ -309,6 +331,9 @@ class ICameraApi:
         self._updating = True
 
         try:
+            stream_response = await self.async_get_camera_response(
+                session, "/adm/get_group.cgi?group=STREAMS"
+            )
             event_response = await self.async_get_camera_response(
                 session, "/adm/get_group.cgi?group=EVENT"
             )  # for alarm (event_trigger & event_mt)
@@ -318,6 +343,31 @@ class ICameraApi:
             notify_response = await self.async_get_camera_response(
                 session, "/adm/get_group.cgi?group=HTTP_NOTIFY"
             )  # for alarm (event_trigger & event_mt)
+            h264_response = await self.async_get_camera_response(
+                session, "/adm/get_group.cgi?group=H264"
+            )
+            mpeg4_response = await self.async_get_camera_response(
+                session, "/adm/get_group.cgi?group=MPEG4"
+            )
+            jpeg_response = await self.async_get_camera_response(
+                session, "/adm/get_group.cgi?group=JPEG"
+            )
+
+            response = h264_response
+            if response.status == 200:
+                self.__process_h264_response_text(await response.text())
+
+            response = mpeg4_response
+            if response.status == 200:
+                self.__process_mpeg4_response_text(await response.text())
+
+            response = jpeg_response
+            if response.status == 200:
+                self.__process_jpeg_response_text(await response.text())
+
+            response = stream_response
+            if response.status == 200:
+                self.__process_streams_response_text(await response.text())
 
             response = event_response
             if response.status == 200:
@@ -451,4 +501,48 @@ class ICameraApi:
                     self.__get_line(body, pos + 14)
                 )
 
+        return ""
+
+    def __process_streams_response_text(self, body: str) -> str:
+        pos = body.find("channel1=")
+        if pos >= 0:
+            self._stream_type1 = self.__get_line(body, pos + 9)
+        pos = body.find("channel2=")
+        if pos >= 0:
+            self._stream_type2 = self.__get_line(body, pos + 9)
+        pos = body.find("channel3=")
+        if pos >= 0:
+            self._stream_type3 = self.__get_line(body, pos + 9)
+
+        return ""
+
+    def __resolution_value_to_string(self, value: str) -> str:
+        """Convert numeric resolution value to string representation."""
+        resolution_map = {
+            "1": "160x120",
+            "2": "320x240",
+            "3": "640x480",
+            "4": "1280x720",
+        }
+        return resolution_map.get(value, "unknown")
+
+    def __process_h264_response_text(self, body: str) -> str:
+        pos = body.find("resolution=")
+        if pos >= 0:
+            value = self.__get_line(body, pos + 11)
+            self._h264_resolution = self.__resolution_value_to_string(value)
+        return ""
+
+    def __process_mpeg4_response_text(self, body: str) -> str:
+        pos = body.find("resolution=")
+        if pos >= 0:
+            value = self.__get_line(body, pos + 11)
+            self._mpeg4_resolution = self.__resolution_value_to_string(value)
+        return ""
+
+    def __process_jpeg_response_text(self, body: str) -> str:
+        pos = body.find("resolution=")
+        if pos >= 0:
+            value = self.__get_line(body, pos + 11)
+            self._jpeg_resolution = self.__resolution_value_to_string(value)
         return ""
