@@ -118,16 +118,10 @@ class ICameraMotion(Camera):
         self._name = "icamera_" + self._camera._hostname
         self._hostname = self._camera._hostname
         self._available = False
-
         self._last_motion = 0
         self._last_image = 0
-
         self._attr_state = STATE_IDLE
-
-        self._attrs: dict[str, Any] = {}
-
-        log_string = f"Sensor init - id={self._id}"
-        _LOGGER.debug(log_string)
+        self._window_coordinates = {1: None, 2: None, 3: None, 4: None}
 
     def unauthorized(self):
         """Log camera unauthorized warning (callback function called from icamera-api)"""
@@ -155,7 +149,7 @@ class ICameraMotion(Camera):
             },
             "configuration_url": self._camera.config_url,
             "name": "iCamera",
-            "model": "iCamera"
+            "model": "iCamera",
             #            "sw_version": self.light.swversion,
         }
 
@@ -174,7 +168,7 @@ class ICameraMotion(Camera):
     #         self.async_camera_image(), self.hass.loop
     #     ).result()
 
- #   @asyncio.coroutine
+    #   @asyncio.coroutine
     async def async_camera_image(self, width=None, height=None) -> bytes:
         """Return bytes of camera image."""
         image = await self._camera.async_camera_image(
@@ -218,6 +212,16 @@ class ICameraMotion(Camera):
 
         attrs["last_update"] = self._camera.last_updated
 
+        # Add window coordinates to attributes
+        for window_num, coords in self._window_coordinates.items():
+            if coords:
+                attrs[f"window_{window_num}_coordinates"] = {
+                    "x": coords[0],
+                    "y": coords[1],
+                    "x2": coords[2],
+                    "y2": coords[3],
+                }
+
         return attrs
 
     async def motion_trigger(self):
@@ -242,7 +246,7 @@ class ICameraMotion(Camera):
         _LOGGER.debug("async_update")
         try:
             session = async_get_clientsession(self.hass)
-            await self.async_setup_webhook() # this will register the webhook with Home Assistant, it will be called again from _camera_updated to set the camera's webhook url if necessary
+            await self.async_setup_webhook()  # this will register the webhook with Home Assistant, it will be called again from _camera_updated to set the camera's webhook url if necessary
 
             self.hass.async_create_task(
                 self._camera.async_update_camera_parameters(session)
@@ -253,11 +257,26 @@ class ICameraMotion(Camera):
             _LOGGER.exception("Error")
 
     def _camera_updated(self):
-        if self.entity_id != None:
-            _LOGGER.debug("Camera updated")
-            asyncio.run_coroutine_threadsafe(self.async_setup_webhook(), self.hass.loop)
-            self.schedule_update_ha_state()
-            self._available = True
+        """Handle camera updates."""
+        # AI Removed:
+        # if self.entity_id != None:
+        #     _LOGGER.debug("Camera updated")
+        #     asyncio.run_coroutine_threadsafe(self.async_setup_webhook(), self.hass.loop)
+        #     self.schedule_update_ha_state()
+        #     self._available = True
+
+        self._available = True
+        # Update window coordinates from camera if available
+        for window_num in range(1, 5):
+            window = self._camera.get_motion_window(window_num)
+            if window:
+                self._window_coordinates[window_num] = (
+                    window._x,
+                    window._y,
+                    window._x2,
+                    window._y2,
+                )
+        self.async_write_ha_state()
 
     async def async_setup_webhook(self):
         callback_url = webhook.get_url(self.hass) + "/api/webhook/" + self.unique_id
@@ -271,7 +290,7 @@ class ICameraMotion(Camera):
                     DOMAIN,
                     "iCamera_motion",
                     self.unique_id,
-                    partial(_handle_webhook, self.motion_trigger)
+                    partial(_handle_webhook, self.motion_trigger),
                 )
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.debug("Webhook already set")
@@ -301,13 +320,13 @@ class ICameraMotion(Camera):
         )
 
     async def async_set_motion_window_coordinates(
-        self,
-        window_num: int,
-        x: int,
-        y: int,
-        x2: int,
-        y2: int,
+        self, window_num: int, x: int, y: int, x2: int, y2: int
     ):
-        return await self._camera.async_set_motion_window_coordinates(
-            async_get_clientsession(self.hass), window_num, x, y, x2, y2
-        )
+        """Set motion window coordinates."""
+        async with async_get_clientsession(self.hass) as session:
+            await self._camera.async_set_motion_window_coordinates(
+                session, window_num, x, y, x2, y2
+            )
+            # Store the coordinates in the entity
+            self._window_coordinates[window_num] = (x, y, x2, y2)
+            self.async_write_ha_state()

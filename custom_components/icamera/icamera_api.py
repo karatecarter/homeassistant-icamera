@@ -271,7 +271,7 @@ class ICameraApi:
     ):
         response = await self.async_send_camera_command(
             session,
-            f"/adm/set_group.cgi?group=MOTION&md_name{window_num}={urllib.parse.quote(name,safe='')}",
+            f"/adm/set_group.cgi?group=MOTION&md_name{window_num}={urllib.parse.quote(name, safe='')}",
         )
         if response:
             self._motion_windows[window_num - 1].set_name(name)
@@ -420,7 +420,7 @@ class ICameraApi:
                 self._send_email_on_motion = False
 
         # if(body.find("event_interval=")) eventInterval = getLine(body, body.indexOf("event_interval=") + 15)
-        for i in range(1, 4):  # loop 1-4
+        for i in range(1, 5):  # loop 1-4
             pos = body.find(f"md_switch{i}=")
             if pos >= 0:
                 switch_string = self.__get_line(body, pos + 11)
