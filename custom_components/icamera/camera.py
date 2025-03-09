@@ -95,6 +95,54 @@ async def async_setup_entry(
         "async_set_motion_window_coordinates",
     )
 
+    platform.async_register_entity_service(
+        "set_window_name",
+        {
+            vol.Required("window_num"): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=4)
+            ),
+            vol.Required("name"): cv.string,
+        },
+        "async_set_motion_window_name",
+    )
+
+    platform.async_register_entity_service(
+        "set_window_enabled",
+        {
+            vol.Required("window_num"): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=4)
+            ),
+            vol.Required("enabled"): cv.boolean,
+        },
+        "async_set_motion_window_enabled",
+    )
+
+    platform.async_register_entity_service(
+        "set_window_sensitivity",
+        {
+            vol.Required("window_num"): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=4)
+            ),
+            vol.Required("sensitivity"): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=10)
+            ),
+        },
+        "async_set_motion_window_sensitivity",
+    )
+
+    platform.async_register_entity_service(
+        "set_window_threshold",
+        {
+            vol.Required("window_num"): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=4)
+            ),
+            vol.Required("threshold"): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=255)
+            ),
+        },
+        "async_set_motion_window_threshold",
+    )
+
 
 class ICameraMotion(Camera):
     """Representation of a iCamera camera entity with motion detection."""
@@ -121,7 +169,12 @@ class ICameraMotion(Camera):
         self._last_motion = 0
         self._last_image = 0
         self._attr_state = STATE_IDLE
-        self._window_coordinates = {1: None, 2: None, 3: None, 4: None}
+        self._windows = {
+            1: None,
+            2: None,
+            3: None,
+            4: None,
+        }  # Store complete window objects
 
     def unauthorized(self):
         """Log camera unauthorized warning (callback function called from icamera-api)"""
@@ -219,14 +272,20 @@ class ICameraMotion(Camera):
         attrs["mpeg4_resolution"] = self._camera._mpeg4_resolution
         attrs["jpeg_resolution"] = self._camera._jpeg_resolution
 
-        # Add window coordinates to attributes
-        for window_num, coords in self._window_coordinates.items():
-            if coords:
-                attrs[f"window_{window_num}_coordinates"] = {
-                    "x": coords[0],
-                    "y": coords[1],
-                    "x2": coords[2],
-                    "y2": coords[3],
+        # Add window data to attributes
+        for window_num, window in self._windows.items():
+            if window:
+                attrs[f"window_{window_num}"] = {
+                    "name": window._name,
+                    "coordinates": {
+                        "x": window._x,
+                        "y": window._y,
+                        "x2": window._x2,
+                        "y2": window._y2,
+                    },
+                    "threshold": window._threshold,
+                    "sensitivity": window._sensitivity,
+                    "is_on": window._is_on,
                 }
 
         return attrs
@@ -273,16 +332,11 @@ class ICameraMotion(Camera):
         #     self._available = True
 
         self._available = True
-        # Update window coordinates from camera if available
+        # Update window data from camera if available
         for window_num in range(1, 5):
             window = self._camera.get_motion_window(window_num)
             if window:
-                self._window_coordinates[window_num] = (
-                    window._x,
-                    window._y,
-                    window._x2,
-                    window._y2,
-                )
+                self._windows[window_num] = window
         self.async_write_ha_state()
 
     async def async_setup_webhook(self):
@@ -334,6 +388,53 @@ class ICameraMotion(Camera):
             await self._camera.async_set_motion_window_coordinates(
                 session, window_num, x, y, x2, y2
             )
-            # Store the coordinates in the entity
-            self._window_coordinates[window_num] = (x, y, x2, y2)
+            # Update the coordinates in the window object
+            if self._windows[window_num] is None:
+                # Create new window object if it doesn't exist
+                window = ICameraMotionWindow(window_num)
+                window.set_coordinates(x, y, x2, y2)
+                self._windows[window_num] = window
+            else:
+                # Update existing window object
+                self._windows[window_num].set_coordinates(x, y, x2, y2)
+            self.async_write_ha_state()
+
+    async def async_set_motion_window_name(self, window_num: int, name: str):
+        """Set motion window name."""
+        async with async_get_clientsession(self.hass) as session:
+            await self._camera.async_set_motion_window_name(session, window_num, name)
+            if self._windows[window_num]:
+                self._windows[window_num].set_name(name)
+            self.async_write_ha_state()
+
+    async def async_set_motion_window_enabled(self, window_num: int, enabled: bool):
+        """Enable or disable motion window."""
+        async with async_get_clientsession(self.hass) as session:
+            await self._camera.async_set_motion_window_active(
+                session, window_num, enabled
+            )
+            if self._windows[window_num]:
+                self._windows[window_num].set_is_on(enabled)
+            self.async_write_ha_state()
+
+    async def async_set_motion_window_sensitivity(
+        self, window_num: int, sensitivity: int
+    ):
+        """Set motion window sensitivity."""
+        async with async_get_clientsession(self.hass) as session:
+            await self._camera.async_set_motion_window_sensitivity(
+                session, window_num, sensitivity
+            )
+            if self._windows[window_num]:
+                self._windows[window_num].set_sensitivity(sensitivity)
+            self.async_write_ha_state()
+
+    async def async_set_motion_window_threshold(self, window_num: int, threshold: int):
+        """Set motion window threshold."""
+        async with async_get_clientsession(self.hass) as session:
+            await self._camera.async_set_motion_window_threshold(
+                session, window_num, threshold
+            )
+            if self._windows[window_num]:
+                self._windows[window_num].set_threshold(threshold)
             self.async_write_ha_state()

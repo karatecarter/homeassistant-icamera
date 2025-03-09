@@ -52,3 +52,106 @@ set_window_coordinates:
             number:
                min: 0
                max: 479
+
+set_window_name:
+  name: Set Motion Window Name
+  description: Set the name for a motion detection window
+  target:
+    entity:
+      integration: icamera
+      domain: camera
+  fields:
+    window_num:
+      name: Window Number
+      description: Window Number (1-4)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 4
+    name:
+      name: Name
+      description: Name for the motion window
+      required: true
+      example: "Front Door"
+      selector:
+        text:
+
+set_window_enabled:
+  name: Set Motion Window State
+  description: Enable or disable a motion detection window
+  target:
+    entity:
+      integration: icamera
+      domain: camera
+  fields:
+    window_num:
+      name: Window Number
+      description: Window Number (1-4)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 4
+    enabled:
+      name: Enabled
+      description: Enable or disable the motion window
+      required: true
+      selector:
+        boolean:
+
+set_window_sensitivity:
+  name: Set Motion Window Sensitivity
+  description: Set the sensitivity for a motion detection window (0-10)
+  target:
+    entity:
+      integration: icamera
+      domain: camera
+  fields:
+    window_num:
+      name: Window Number
+      description: Window Number (1-4)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 4
+    sensitivity:
+      name: Sensitivity
+      description: Motion detection sensitivity (0-10)
+      required: true
+      example: 6
+      selector:
+        number:
+          min: 0
+          max: 10
+
+set_window_threshold:
+  name: Set Motion Window Threshold
+  description: Set the threshold for a motion detection window (0-255)
+  target:
+    entity:
+      integration: icamera
+      domain: camera
+  fields:
+    window_num:
+      name: Window Number
+      description: Window Number (1-4)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 4
+    threshold:
+      name: Threshold
+      description: Motion detection threshold (0-255)
+      required: true
+      example: 20
+      selector:
+        number:
+          min: 0
+          max: 255

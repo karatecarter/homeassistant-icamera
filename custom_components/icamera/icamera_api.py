@@ -47,6 +47,7 @@ class ICameraMotionWindow:
 
     def set_sensitivity(self, sensitivity: int = DEFAULT_SENSITIVITY):
         """Set motion sensitivity - 0-10"""
+        self._sensitivity = sensitivity
 
     def set_is_on(self, on: bool):
         self._is_on = on
