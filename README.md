@@ -1,6 +1,7 @@
 # iCamera for Home Assistant
 
 A Home Assistant integration for iCamera IP cameras, providing motion detection, email notifications, and configurable motion windows.
+Camera API documentation:  https://github.com/edent/Sercomm-API
 
 ## Features
 
