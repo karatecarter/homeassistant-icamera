@@ -12,8 +12,6 @@ from homeassistant import config_entries, core
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.typing import HomeAssistantType
-
 from . import cameras
 from .const import DOMAIN
 from .icamera_api import ICameraApi, ICameraMotionWindow
@@ -45,7 +43,7 @@ class ICameraEmailSwitch(SwitchEntity):
     """Representation of an iCamera email switch."""
 
     def __init__(
-        self, hass: HomeAssistantType, uniqueid: str, camera: ICameraApi
+        self, hass: core.HomeAssistant, uniqueid: str, camera: ICameraApi
     ) -> None:
         super().__init__()
         self._camera = camera
@@ -116,7 +114,7 @@ class ICameraMotionDetectionSwitch(SwitchEntity):
     """Representation of an iCamera motion detection switch."""
 
     def __init__(
-        self, hass: HomeAssistantType, uniqueid: str, camera: ICameraApi
+        self, hass: core.HomeAssistant, uniqueid: str, camera: ICameraApi
     ) -> None:
         super().__init__()
         self._camera = camera
@@ -187,7 +185,7 @@ class ICameraMotionDetectionSwitch(SwitchEntity):
 class ICameraMotionWindowSwitch(SwitchEntity):
     def __init__(
         self,
-        hass: HomeAssistantType,
+        hass: core.HomeAssistant,
         uniqueid: str,
         window_num: int,
         camera: ICameraApi,

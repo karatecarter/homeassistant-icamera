@@ -25,7 +25,6 @@ from homeassistant import config_entries, core
 from datetime import datetime
 from typing import Any
 from homeassistant.components.camera import Camera, CameraEntityFeature
-from homeassistant.helpers.typing import HomeAssistantType
 from .const import DOMAIN
 
 STATE_MOTION = "motion"
@@ -149,7 +148,7 @@ class ICameraMotion(Camera):
 
     def __init__(
         self,
-        hass: HomeAssistantType,
+        hass: core.HomeAssistant,
         uniqueid: str,
         camera: ICameraApi,
         motion_timeout: int,
